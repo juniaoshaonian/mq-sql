@@ -40,7 +40,7 @@ type Topic struct {
 	//	消费组
 	consumerGroups map[string][]*MqConsumer
 	closeChs       []chan struct{}
-	msgCh          map[string]chan *mq.Message
+	msgCh          []chan *mq.Message
 	once           sync.Once
 }
 
@@ -59,7 +59,7 @@ func (m *Mq) Topic(name string, partition int) error {
 		partitionList:  partitionList,
 		partitionNum:   partition,
 		closeChs:       make([]chan struct{}, 0, 16),
-		msgCh:          make(map[string]chan *mq.Message, 16),
+		msgCh:          make([]chan *mq.Message, 0, 16),
 		lock:           sync.RWMutex{},
 		producerGetter: m.producerGetter(partition),
 		consumerGroups: make(map[string][]*MqConsumer, 32),
@@ -114,11 +114,7 @@ func (m *Mq) Consumer(topic string, id string) (mq.Consumer, error) {
 		return nil, errors.New("topic 不存在")
 	}
 	// 查看有没有之前创建过的消费组
-	msgCh, ok := tp.msgCh[id]
-	if !ok {
-		msgCh = make(chan *mq.Message, 1000)
-		tp.msgCh[id] = msgCh
-	}
+	msgCh := make(chan *mq.Message, 100)
 	mqConsumer := &MqConsumer{
 		topic:      tp,
 		db:         m.Db,
@@ -132,6 +128,7 @@ func (m *Mq) Consumer(topic string, id string) (mq.Consumer, error) {
 	}
 	// 重新分配consumer对应的分区
 	tp.lock.Lock()
+	tp.msgCh = append(tp.msgCh, msgCh)
 	closeCh := make(chan struct{})
 	consumers, ok := tp.consumerGroups[id]
 	if !ok {

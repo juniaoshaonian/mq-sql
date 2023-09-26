@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/ecodeclub/mq-api"
+
 	"github.com/ecodeclub/mq-sql/gorm_mq/domain"
 	"gorm.io/gorm"
 )

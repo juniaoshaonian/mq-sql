@@ -430,12 +430,15 @@ func (g *GormMQSuite) TestConsumer_Sort() {
 			consumers := tc.consumers(gormMq)
 			ans := make([]*mq.Message, 0, len(tc.wantVal))
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				msgs := tc.consumerFunc(consumers[0])
-				ans = append(ans, msgs...)
-			}()
+			for _, c := range consumers {
+				newc := c
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					msgs := tc.consumerFunc(newc)
+					ans = append(ans, msgs...)
+				}()
+			}
 			for _, msg := range tc.input {
 				_, err := p.Produce(context.Background(), msg)
 				require.NoError(t, err)
