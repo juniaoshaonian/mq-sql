@@ -1,6 +1,6 @@
 module github.com/ecodeclub/mq-sql
 
-go 1.21
+go 1.21.0
 
 require (
 	github.com/ecodeclub/ekit v0.0.7
