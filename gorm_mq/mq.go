@@ -53,7 +53,6 @@ func (m *Mq) Topic(name string, partition int) error {
 		}
 		partitionList = append(partitionList, tableName)
 	}
-
 	t := &Topic{
 		Name:           name,
 		partitionList:  partitionList,
