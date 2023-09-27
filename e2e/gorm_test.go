@@ -40,7 +40,7 @@ type GormMQSuite struct {
 	db  *gorm.DB
 }
 
-func (g *GormMQSuite) SetupSuite() {
+func (g *GormMQSuite) SetupTest() {
 	db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
 		//Logger: logger.Default.LogMode(logger.Info),
 	})

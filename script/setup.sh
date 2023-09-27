@@ -20,7 +20,7 @@ TARGET_PUSH=.git/hooks/pre-push
 # copy pre-commit file if not exist.
 if [ ! -f $TARGET_COMMIT ]; then
     echo "设置 git pre-commit hooks..."
-    cp $SOURCE_COMMIT $TARGET_COMMIT
+    cp $SOURCE_COMMIT $TARGET_COMMITgo clean -modcache
 fi
 
 # copy pre-push file if not exist.
