@@ -18,17 +18,55 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ecodeclub/mq-sql/gorm_mq/balancer/equal_divide"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/ecodeclub/ekit/syncx"
 	"github.com/ecodeclub/mq-api"
-	"github.com/ecodeclub/mq-sql/gorm_mq/balancer/equal_divide"
 	"github.com/ecodeclub/mq-sql/gorm_mq/domain"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+func NewMq(Db *gorm.DB, opts ...MqOption) (mq.MQ, error) {
+	err := Db.AutoMigrate(&domain.Cursors{})
+	if err != nil {
+		return nil, err
+	}
+	m := &Mq{
+		Db:               Db,
+		topics:           syncx.Map[string, *Topic]{},
+		consumerBalancer: equal_divide.NewBalancer(),
+		producerGetter:   NewGetter,
+		limit:            20,
+		timeout:          10 * time.Second,
+		interval:         2 * time.Second,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m, nil
+}
+
+func WithLimit(limit int) MqOption {
+	return func(m *Mq) {
+		m.limit = limit
+	}
+}
+
+func WithTimeout(timeout time.Duration) MqOption {
+	return func(m *Mq) {
+		m.timeout = timeout
+	}
+}
+
+func WithInterval(interval time.Duration) MqOption {
+	return func(m *Mq) {
+		m.interval = interval
+	}
+}
 
 type Mq struct {
 	Db               *gorm.DB
@@ -82,16 +120,17 @@ func (m *Mq) Topic(name string, partition int) error {
 }
 
 func (tp *Topic) Close() error {
+	tp.lock.Lock()
+	defer tp.lock.Unlock()
 	tp.once.Do(func() {
-		tp.lock.Lock()
 		for _, ch := range tp.msgCh {
 			close(ch)
 		}
 		for _, ch := range tp.closeChs {
 			close(ch)
 		}
-		tp.lock.Unlock()
 	})
+
 	return nil
 }
 
@@ -149,9 +188,9 @@ func (m *Mq) Consumer(topic string, id string) (mq.Consumer, error) {
 	}
 	res := m.consumerBalancer.Balance(tp.partitionNum, len(consumers)+1)
 	for i := 0; i < len(consumers); i++ {
-		consumers[i].partitions = res[i]
+		consumers[i].setPartition(res[i])
 	}
-	mqConsumer.partitions = res[len(consumers)]
+	mqConsumer.setPartition(res[len(consumers)])
 	consumers = append(consumers, mqConsumer)
 	tp.consumerGroups[id] = consumers
 	tp.closeChs = append(tp.closeChs, closeCh)
@@ -180,42 +219,4 @@ func (m *Mq) Consumer(topic string, id string) (mq.Consumer, error) {
 		}
 	}()
 	return mqConsumer, nil
-}
-
-func NewMq(Db *gorm.DB, opts ...MqOption) (mq.MQ, error) {
-	err := Db.AutoMigrate(&domain.Cursors{})
-	if err != nil {
-		return nil, err
-	}
-	m := &Mq{
-		Db:               Db,
-		topics:           syncx.Map[string, *Topic]{},
-		consumerBalancer: equal_divide.NewBalancer(),
-		producerGetter:   NewGetter,
-		limit:            20,
-		timeout:          10 * time.Second,
-		interval:         2 * time.Second,
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m, nil
-}
-
-func WithLimit(limit int) MqOption {
-	return func(m *Mq) {
-		m.limit = limit
-	}
-}
-
-func WithTimeout(timeout time.Duration) MqOption {
-	return func(m *Mq) {
-		m.timeout = timeout
-	}
-}
-
-func WithInterval(interval time.Duration) MqOption {
-	return func(m *Mq) {
-		m.interval = interval
-	}
 }

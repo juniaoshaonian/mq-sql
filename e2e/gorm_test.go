@@ -19,7 +19,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -40,38 +39,58 @@ type GormMQSuite struct {
 	db  *gorm.DB
 }
 
-func (g *GormMQSuite) SetupTest() {
-	db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
-		//Logger: logger.Default.LogMode(logger.Info),
-	})
-	require.NoError(g.T(), err)
-	g.db = db
-}
-func (g *GormMQSuite) TearDownTest() {
-	sqlDB, err := g.db.DB()
-	require.NoError(g.T(), err)
-	_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
-	require.NoError(g.T(), err)
-	_, err = sqlDB.Exec("CREATE DATABASE  `test`")
-	require.NoError(g.T(), err)
-}
+//func (g *GormMQSuite) SetupTest() {
+//	db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
+//		//Logger: logger.Default.LogMode(logger.Info),
+//	})
+//	require.NoError(g.T(), err)
+//	g.db = db
+//}
+
+//func (g *GormMQSuite) TearDownTest() {
+//	sqlDB, err := g.db.DB()
+//	require.NoError(g.T(), err)
+//	_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
+//	require.NoError(g.T(), err)
+//	_, err = sqlDB.Exec("CREATE DATABASE  `test`")
+//	require.NoError(g.T(), err)
+//
+//}
 
 func (g *GormMQSuite) TestTopic() {
 	testcases := []struct {
-		name    string
-		topic   string
-		input   int
-		wantVal []string
+		name       string
+		topic      string
+		input      int
+		wantVal    []string
+		beforeFunc func()
+		afterFunc  func()
 	}{
 		{
 			name:    "建立含有4个分区的topic",
 			topic:   "test_topic",
 			input:   4,
 			wantVal: []string{"test_topic_0", "test_topic_1", "test_topic_2", "test_topic_3"},
+			beforeFunc: func() {
+				db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
+					//Logger: logger.Default.LogMode(logger.Info),
+				})
+				require.NoError(g.T(), err)
+				g.db = db
+			},
+			afterFunc: func() {
+				sqlDB, err := g.db.DB()
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("CREATE DATABASE  `test`")
+				require.NoError(g.T(), err)
+			},
 		},
 	}
 	for _, tc := range testcases {
 		g.T().Run(tc.name, func(t *testing.T) {
+			tc.beforeFunc()
 			mq, err := gorm_mq.NewMq(g.db)
 			require.NoError(t, err)
 			err = mq.Topic(tc.topic, 4)
@@ -79,6 +98,7 @@ func (g *GormMQSuite) TestTopic() {
 			tables, err := g.getTables(tc.topic)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantVal, tables)
+			tc.afterFunc()
 		})
 	}
 
@@ -94,6 +114,8 @@ func (g *GormMQSuite) TestConsumer() {
 		// 处理消息
 		consumerFunc func(c mq.Consumer) []*mq.Message
 		wantVal      []*mq.Message
+		beforeFunc   func()
+		afterFunc    func()
 	}{
 		{
 			name:       "一个消费组内多个消费者",
@@ -169,6 +191,21 @@ func (g *GormMQSuite) TestConsumer() {
 					Key:   []byte("5"),
 					Topic: "test_topic",
 				},
+			},
+			beforeFunc: func() {
+				db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
+					//Logger: logger.Default.LogMode(logger.Info),
+				})
+				require.NoError(g.T(), err)
+				g.db = db
+			},
+			afterFunc: func() {
+				sqlDB, err := g.db.DB()
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("CREATE DATABASE  `test`")
+				require.NoError(g.T(), err)
 			},
 		},
 		{
@@ -280,10 +317,26 @@ func (g *GormMQSuite) TestConsumer() {
 					Topic: "test_topic",
 				},
 			},
+			beforeFunc: func() {
+				db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
+					//Logger: logger.Default.LogMode(logger.Info),
+				})
+				require.NoError(g.T(), err)
+				g.db = db
+			},
+			afterFunc: func() {
+				sqlDB, err := g.db.DB()
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("CREATE DATABASE  `test`")
+				require.NoError(g.T(), err)
+			},
 		},
 	}
 	for _, tc := range testcases {
 		g.T().Run(tc.name, func(t *testing.T) {
+			tc.beforeFunc()
 			gormMq, err := gorm_mq.NewMq(g.db)
 			require.NoError(t, err)
 			err = gormMq.Topic(tc.topic, int(tc.partitions))
@@ -293,26 +346,29 @@ func (g *GormMQSuite) TestConsumer() {
 			consumers := tc.consumers(gormMq)
 			ans := make([]*mq.Message, 0, len(tc.wantVal))
 			var wg sync.WaitGroup
+			locker := sync.RWMutex{}
 			for _, c := range consumers {
 				newc := c
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					msgs := tc.consumerFunc(newc)
+					locker.Lock()
 					ans = append(ans, msgs...)
+					locker.Unlock()
 				}()
 			}
 			for _, msg := range tc.input {
 				_, err := p.Produce(context.Background(), msg)
 				require.NoError(t, err)
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(5 * time.Second)
 			err = gormMq.Close()
 			require.NoError(t, err)
 			wg.Wait()
 			assert.ElementsMatch(t, tc.wantVal, ans)
 			// 清理测试环境
-			g.TearDownTest()
+			tc.afterFunc()
 		})
 	}
 }
@@ -328,6 +384,8 @@ func (g *GormMQSuite) TestConsumer_Sort() {
 		// 处理消息
 		consumerFunc func(c mq.Consumer) []*mq.Message
 		wantVal      []*mq.Message
+		beforeFunc   func()
+		afterFunc    func()
 	}{
 		{
 			name:       "消息有序",
@@ -431,10 +489,26 @@ func (g *GormMQSuite) TestConsumer_Sort() {
 					Topic: "test_topic",
 				},
 			},
+			beforeFunc: func() {
+				db, err := gorm.Open(mysql.Open(g.dsn), &gorm.Config{
+					//Logger: logger.Default.LogMode(logger.Info),
+				})
+				require.NoError(g.T(), err)
+				g.db = db
+			},
+			afterFunc: func() {
+				sqlDB, err := g.db.DB()
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("DROP DATABASE IF EXISTS `test`")
+				require.NoError(g.T(), err)
+				_, err = sqlDB.Exec("CREATE DATABASE  `test`")
+				require.NoError(g.T(), err)
+			},
 		},
 	}
 	for _, tc := range testcases {
 		g.T().Run(tc.name, func(t *testing.T) {
+			tc.beforeFunc()
 			gormMq, err := gorm_mq.NewMq(g.db)
 			require.NoError(t, err)
 			err = gormMq.Topic(tc.topic, int(tc.partitions))
@@ -444,20 +518,23 @@ func (g *GormMQSuite) TestConsumer_Sort() {
 			consumers := tc.consumers(gormMq)
 			ans := make([]*mq.Message, 0, len(tc.wantVal))
 			var wg sync.WaitGroup
+			locker := sync.RWMutex{}
 			for _, c := range consumers {
 				newc := c
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					msgs := tc.consumerFunc(newc)
+					locker.Lock()
 					ans = append(ans, msgs...)
+					locker.Unlock()
 				}()
 			}
 			for _, msg := range tc.input {
 				_, err := p.Produce(context.Background(), msg)
 				require.NoError(t, err)
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(5 * time.Second)
 			err = gormMq.Close()
 			require.NoError(t, err)
 			wg.Wait()
@@ -465,7 +542,7 @@ func (g *GormMQSuite) TestConsumer_Sort() {
 			actualMap := getMsgMap(ans)
 			assert.Equal(t, wantMap, actualMap)
 			// 清理测试环境
-			g.TearDownTest()
+			tc.afterFunc()
 		})
 	}
 }
@@ -519,10 +596,4 @@ func TestMq(t *testing.T) {
 	suite.Run(t, &GormMQSuite{
 		dsn: "root:root@tcp(127.0.0.1:3306)/test?charset=utf8mb4&parseTime=True&loc=Local",
 	})
-}
-
-func msgLog(msgs []*mq.Message) {
-	for i := 0; i < len(msgs); i++ {
-		log.Println(string(msgs[i].Key), string(msgs[i].Value))
-	}
 }

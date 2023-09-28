@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ecodeclub/mq-api"
@@ -35,12 +36,19 @@ type MqConsumer struct {
 	msgCh      chan *mq.Message
 	name       string
 	groupId    string
+	locker     sync.RWMutex
+	corsor     int64
 	// 每次至多消费多少
 	limit int
 	// 抢占超时时间
 	timeout time.Duration
 	// 续约时间
 	interval time.Duration
+}
+
+type msgRes struct {
+	msgs []*domain.Partition
+	err  error
 }
 
 func (m *MqConsumer) Consume(ctx context.Context) (*mq.Message, error) {
@@ -58,7 +66,8 @@ func (m *MqConsumer) ConsumeMsgCh(ctx context.Context) (<-chan *mq.Message, erro
 
 func (m *MqConsumer) getMsgFromDB(ctx context.Context) ([]*mq.Message, error) {
 	ans := make([]*mq.Message, 0, 64)
-	for _, p := range m.partitions {
+	partitions := m.getPartition()
+	for _, p := range partitions {
 		// 抢占获取表的游标,如果当前
 		tableName := fmt.Sprintf("%s_%d", m.topic.Name, p)
 		cursor, err := m.occupyCursor(tableName, m.groupId)
@@ -245,7 +254,16 @@ func (m *MqConsumer) releaseCursor(tableName string, id string, cursor int64) er
 
 }
 
-type msgRes struct {
-	msgs []*domain.Partition
-	err  error
+// 获取分区
+func (m *MqConsumer) getPartition() []int {
+	m.locker.Lock()
+	defer m.locker.Unlock()
+	return m.partitions
+}
+
+// 设置分区
+func (m *MqConsumer) setPartition(partitions []int) {
+	m.locker.Lock()
+	defer m.locker.Unlock()
+	m.partitions = partitions
 }
