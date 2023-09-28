@@ -123,9 +123,6 @@ func (m *Mq) Topic(name string, partition int) error {
 func (tp *Topic) Close() error {
 	tp.lock.Lock()
 	tp.once.Do(func() {
-		for _, ch := range tp.msgCh {
-			close(ch)
-		}
 		for _, ch := range tp.closeChs {
 			close(ch)
 		}
@@ -214,6 +211,7 @@ func (m *Mq) Consumer(topic string, id string) (mq.Consumer, error) {
 					msgCh <- msg
 				}
 			case <-closeCh:
+				close(msgCh)
 				return
 			}
 		}
