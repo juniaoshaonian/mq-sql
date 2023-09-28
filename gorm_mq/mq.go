@@ -18,10 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ecodeclub/mq-sql/gorm_mq/balancer/equal_divide"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/ecodeclub/mq-sql/gorm_mq/balancer/equal_divide"
 
 	"github.com/ecodeclub/ekit/syncx"
 	"github.com/ecodeclub/mq-api"
@@ -121,7 +122,6 @@ func (m *Mq) Topic(name string, partition int) error {
 
 func (tp *Topic) Close() error {
 	tp.lock.Lock()
-	defer tp.lock.Unlock()
 	tp.once.Do(func() {
 		for _, ch := range tp.msgCh {
 			close(ch)
@@ -130,7 +130,7 @@ func (tp *Topic) Close() error {
 			close(ch)
 		}
 	})
-
+	tp.lock.Unlock()
 	return nil
 }
 

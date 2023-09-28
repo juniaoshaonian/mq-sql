@@ -37,7 +37,6 @@ type MqConsumer struct {
 	name       string
 	groupId    string
 	locker     sync.RWMutex
-	corsor     int64
 	// 每次至多消费多少
 	limit int
 	// 抢占超时时间
