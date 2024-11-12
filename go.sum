@@ -1,3 +1,5 @@
+github.com/ecodeclub/mq-api v0.0.0-20240508035004-fd7de3346cfe h1:PJ/YcqAQx/9XnRDoLGD9Or1gNgYjJK72+RhX7TbyMao=
+github.com/ecodeclub/mq-api v0.0.0-20240508035004-fd7de3346cfe/go.mod h1:M+2owQhSRoGyX15L0rUdoSvUDvTOuexquG/605wqYtI=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
